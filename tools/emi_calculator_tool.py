@@ -2,7 +2,9 @@ from langchain.tools import tool
 
 @tool
 def calculate_emi(principal: float, interest_rate: float, tenure_months: int) -> float:
-    """Calculate the Equated Monthly Installment (EMI) for a loan."""
+    """ 
+    Calculate the Equated Monthly Installment (EMI) for a loan for given principal, annual interest rate, and tenure in months.
+    """
     if tenure_months == 0:
         return 0.0
     monthly_rate = interest_rate / (12 * 100)

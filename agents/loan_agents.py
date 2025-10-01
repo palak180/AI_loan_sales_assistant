@@ -91,6 +91,8 @@ def sales_agent(state: State) -> Command[Literal["user_agent", END]]:
 
     # Use the tool-enabled LLM for invocation
     response = llm_with_tools.invoke(messages)
+
+    print(response)
     print("\n\nSales:", response.content)
 
     new_state = state.copy()
