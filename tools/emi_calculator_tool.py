@@ -4,6 +4,14 @@ from langchain.tools import tool
 def calculate_emi(principal: float, interest_rate: float, tenure_months: int) -> float:
     """ 
     Calculate the Equated Monthly Installment (EMI) for a loan for given principal, annual interest rate, and tenure in months.
+
+    Args:
+        principal (float): The loan amount in INR.
+        interest_rate (float): The annual interest rate (in percentage).
+        tenure_months (int): The loan tenure in months.
+    
+    Returns:
+        float: The EMI amount rounded to the nearest integer.
     """
     if tenure_months == 0:
         return 0.0

@@ -1,23 +1,93 @@
 import dotenv
 from langgraph.graph import StateGraph, START, END
-
 from agents.user_agent import user_agent
-from agents.loan_agents import master_agent, sales_agent, search_agent
-
+from agents.agents import (
+    master_agent, 
+    sales_agent, 
+    search_agent, 
+    underwriting_agent,
+    route_after_master,
+    route_after_sales,
+    route_after_search,
+    route_after_underwriting
+)
 from state import State
 
 dotenv.load_dotenv()
 
+# Initialize graph
 graph_builder = StateGraph(State)
 
+# Add all nodes
+graph_builder.add_node("master_agent", master_agent)
 graph_builder.add_node("sales_agent", sales_agent)
 graph_builder.add_node("user_agent", user_agent)
 graph_builder.add_node("search_agent", search_agent)
-graph_builder.add_node("master_agent", master_agent)
+graph_builder.add_node("underwriting_agent", underwriting_agent)
 
+# Start always goes to master
 graph_builder.add_edge(START, "master_agent")
 
+# Master agent uses conditional routing
+graph_builder.add_conditional_edges(
+    "master_agent",
+    route_after_master,
+    {
+        "user_agent": "user_agent",
+        "sales_agent": "sales_agent",
+        "search_agent": "search_agent",
+        "underwriting_agent": "underwriting_agent",
+        "__end__": END
+    }
+)
+
+# User agent always goes back to master for routing
+graph_builder.add_edge("user_agent", "master_agent")
+
+# Sales agent conditional routing
+graph_builder.add_conditional_edges(
+    "sales_agent",
+    route_after_sales,
+    {
+        "user_agent": "user_agent",
+        "__end__": END
+    }
+)
+
+# Search agent always goes to sales
+graph_builder.add_conditional_edges(
+    "search_agent",
+    route_after_search,
+    {
+        "sales_agent": "sales_agent"
+    }
+)
+
+# Underwriting agent always goes to sales
+graph_builder.add_conditional_edges(
+    "underwriting_agent",
+    route_after_underwriting,
+    {
+        "sales_agent": "sales_agent"
+    }
+)
+
+# Compile graph
 graph = graph_builder.compile()
 
-conversation = graph.invoke({'count':0,'history':'','queries':[],'search_results':'','action':''})
-# print(conversation['history'])
+# Run conversation
+if __name__ == "__main__":
+    conversation = graph.invoke({
+        'count': 0,
+        'history': '',
+        'queries': [],
+        'search_results': '',
+        'action': '',
+        'user_profile': {},
+        'user_id': None
+    })
+    
+    print("\n" + "="*50)
+    print("FINAL CONVERSATION HISTORY:")
+    print("="*50)
+    print(conversation['history'])
