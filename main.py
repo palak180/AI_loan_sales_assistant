@@ -4,13 +4,11 @@ from agents.user_agent import user_agent
 from agents.agents import (
     master_agent, 
     sales_agent, 
-    search_agent, 
     underwriting_agent,
     route_after_master,
-    route_after_sales,
-    route_after_search,
-    route_after_underwriting
+    route_after_sales
 )
+from agents.search_agent import search_agent
 from state import State
 
 dotenv.load_dotenv()
@@ -55,38 +53,28 @@ graph_builder.add_conditional_edges(
 )
 
 # Search agent always goes to sales
-graph_builder.add_conditional_edges(
-    "search_agent",
-    route_after_search,
-    {
-        "sales_agent": "sales_agent"
-    }
-)
+graph_builder.add_edge("search_agent", "sales_agent")
 
 # Underwriting agent always goes to sales
-graph_builder.add_conditional_edges(
-    "underwriting_agent",
-    route_after_underwriting,
-    {
-        "sales_agent": "sales_agent"
-    }
-)
+graph_builder.add_edge("underwriting_agent", "sales_agent")
 
 # Compile graph
 graph = graph_builder.compile()
 
 # Run conversation
 if __name__ == "__main__":
-    conversation = graph.invoke({
+    initial_state = {
         'count': 0,
         'history': '',
-        'queries': [],
         'search_results': '',
+        'emi_calculation': '',
         'action': '',
         'user_profile': {},
         'user_id': None
-    })
-    
+    }
+
+    conversation = graph.invoke(initial_state)
+
     print("\n" + "="*50)
     print("FINAL CONVERSATION HISTORY:")
     print("="*50)

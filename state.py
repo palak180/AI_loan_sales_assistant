@@ -3,7 +3,6 @@ from typing import TypedDict, List, Optional, Dict
 class State(TypedDict):
     history: str                    # Conversation history
     count: int                      # Message counter for max limit
-    queries: List[str]              # Search queries (populated by master, consumed by search)
     search_results: str             # Search results (populated by search, consumed by sales)
     emi_calculation: str            # EMI calculation results (populated by emi_calculator, consumed by sales)
     action: str                     # Next action/agent to route to (populated by all agents)

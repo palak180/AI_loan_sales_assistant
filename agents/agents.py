@@ -1,18 +1,13 @@
 from state import State
-import dotenv
-from langchain_groq import ChatGroq
 import json
 import re
 from typing import Literal
 from langgraph.graph import END
 from agents.prompts import PROMPTS
-from tools.tavily_tool import tavily_tool
 from tools.emi_calculator_tool import calculate_emi
 from tools.credit_bureau import credit_score_api, pre_approved_amount_api
+from llm import llm
 
-dotenv.load_dotenv()
-
-llm = ChatGroq(model="llama-3.1-8b-instant")
 
 MAX_COUNT = 6
 
@@ -20,32 +15,71 @@ def update_user_profile(latest_message: str, current_profile: dict) -> dict:
     """
     Update the user profile based on the latest message using LLM.
     """
+
     if len(current_profile) == 0:
         prompt = f"""
-        You are an expert at extracting and creating user profiles for loan applications based on conversation history.
-        The latest user message is: "{latest_message}"
-        Create a user profile with any relevant information from the latest message.
-        Extract: name, phone, email, user_id, income, employment_type, loan_amount, loan_type, loan_tenure, property_value, etc.
-        If no relevant information is found, return an empty JSON object.
-        Return the profile in strict JSON format.
-        """
+    You are an expert at creating user profiles for loan applications based on conversation history.
+
+    The latest user message is: "{latest_message}"
+
+    Your task: Create a user profile extracting any relevant information from this message.
+
+    - If a field is present, populate it.
+    - If a field is not present, omit it from the JSON (don't fill with null, empty string, or placeholder).
+    - If no relevant information can be extracted, return an empty JSON: {{}}
+
+    **Examples:**
+
+    Message: "My name is Rohan and I want a personal loan for 5 lakhs"
+    Output: {{"name": "Rohan", "loan_type": "personal", "loan_amount": 500000}}
+
+    Message: "I earn ₹80,000 monthly and have a house valued at ₹40 lakh"
+    Output: {{"income": 80000, "property_value": 4000000}}
+
+    Message: "What's the processing fee?"
+    Output: {{}}
+
+    Message: "My user ID is 2 and I want a home loan for 35 lakhs, tenure 10 years"
+    Output: {{"user_id": 2, "loan_amount": 3500000, "loan_type": "home", "loan_tenure": 120}}
+
+    Now give the result as a strict JSON object.
+    """
     else:
         prompt = f"""
-        You are an expert at extracting and updating user profiles for loan applications based on conversation history.
-        The current user profile is: {json.dumps(current_profile)}
-        The latest user message is: "{latest_message}"
-        
-        Update the user profile with any new information from the latest message.
-        If no new relevant information is found, return the current profile unchanged.
-        
-        Return the updated profile in strict JSON format.
-        """
+    You are an expert at updating user profiles for loan applications based on conversation history.
+
+    The current user profile is: {json.dumps(current_profile, ensure_ascii=False)}
+    The latest user message is: "{latest_message}"
+
+    Your task: Make a new user profile with any new information from the latest message.
+
+    - Only add or update fields if clear, explicit new information is present.
+    - If the latest message provides no relevant info, return the profile unchanged.
+    - **Do not delete or overwrite previously filled fields unless there is definite new info.**
+    - Always return the complete profile JSON with relevant (known) fields only.
+
+    **Examples:**
+
+    Current: {{"name": "Rohan Mehta"}}
+    Message: "My income is 80,000 per month."
+    Output: {{"name": "Rohan Mehta", "income": 80000}}
+
+    Current: {{"loan_amount": 500000}}
+    Message: "Processing fee?"
+    Output: {{"loan_amount": 500000}}
+
+    Current: {{"loan_amount": 3500000, "loan_type": "home", "loan_tenure": 120}}
+    Message: "Yes sure, my user ID is 2"
+    Output: {{"user_id": 2, "loan_amount": 3500000, "loan_type": "home", "loan_tenure": 120}}
+
+    Now give only the strictly JSON response.
+    """
 
     response = llm.invoke(prompt)
     text = str(response.content)
     match = re.search(r"\{.*\}", text, re.DOTALL)
 
-    print("Updated profile: ", match)
+    print("Updated profile: ", text, "\n\nEND\n\n")
     if match:
         try:
             updated_profile = json.loads(match.group())
@@ -83,23 +117,33 @@ def master_agent(state: State) -> State:
     user_profile = update_user_profile(user_latest_message, state["user_profile"])
     state["user_profile"] = user_profile
 
-    # Routing decision prompt
+    # PRIORITY CHECK: If we just got a user_id and haven't checked credit, do that FIRST
+    user_id = state.get("user_id") or user_profile.get("user_id")
+    credit_already_checked = state["user_profile"].get("credit_score_checked")
+    
+    if user_id and not credit_already_checked:
+        print(f"\n[MASTER AGENT] User ID detected ({user_id}), routing to underwriting first")
+        state["action"] = "underwriting_agent"
+        # Store user_id in state if not already there
+        if not state.get("user_id"):
+            state["user_id"] = user_id
+        return state
+    
+    # Simple routing decision - just decide WHICH agent, not the details
     routing_prompt = f"""You are a master routing agent for Tata Capital Loans.
-    Analyze the conversation and user profile to decide the next action.
+    Analyze the user's message and decide which specialized agent should handle it.
 
     User's latest message: {user_latest_message}
     Current user profile: {json.dumps(user_profile)}
 
     Routing Rules:
-    1. If user mentions/provides a user_id AND we haven't checked credit yet → route to 'underwriting_agent'
-    2. If user asks about loan products, eligibility, rates, documents, fees, processes → route to 'search_agent' with specific queries
-    3. If user asks to calculate EMI AND we have (loan_amount, interest_rate, tenure) → route to 'emi_calculator'
-    4. Otherwise (general sales, follow-ups, negotiations) → route to 'sales_agent'
+    1. If user asks about loan products, eligibility, interest rates, documents required, fees, processes, terms → route to 'search_agent'
+    2. If user asks to calculate EMI/monthly payment AND we have loan_amount AND (interest_rate OR loan_type) AND tenure → route to 'emi_calculator'
+    3. Otherwise (greetings, general questions, clarifications, negotiations, follow-ups) → route to 'sales_agent'
 
-    Respond in strict JSON format:
+    Respond in strict JSON format with just the action:
     {{
-        "action": "underwriting_agent" | "search_agent" | "emi_calculator" | "sales_agent",
-        "queries": ["query1", "query2"] (only for search_agent, else empty list),
+        "action": "search_agent" | "emi_calculator" | "sales_agent",
         "reason": "brief explanation"
     }}
     """
@@ -114,15 +158,6 @@ def master_agent(state: State) -> State:
         try:
             data = json.loads(match.group())
             action = data.get("action", "sales_agent")
-            
-            # Validate underwriting routing - need user_id and not already checked
-            if action == "underwriting_agent":
-                if not state.get("user_id") and not user_profile.get("user_id"):
-                    print("  → Cannot route to underwriting: no user_id")
-                    action = "sales_agent"
-                elif state["user_profile"].get("credit_score_checked"):
-                    print("  → Already checked credit, routing to sales instead")
-                    action = "sales_agent"
             
             # Validate EMI calculator routing
             if action == "emi_calculator":
@@ -217,61 +252,6 @@ Generate your response now:"""
     return state
 
 
-def search_agent(state: State) -> State:
-    """
-    Search agent - performs web searches and summarizes results.
-    """
-    queries = state.get("queries", [])
-    
-    if len(queries) == 0:
-        state["action"] = "sales_agent"
-        return state
-
-    overall_search_results = ""
-    
-    try:
-        for query in queries:
-            print(f"\n[SEARCH AGENT] Searching for: {query}")
-            
-            tavily_results = tavily_tool.invoke({
-                "query": f"{query} Tata Capital"
-            })
-            
-            tavily_results_formatted = ""
-            for result in tavily_results.get("results", []):
-                tavily_results_formatted += f"Title: {result['title']}\nContent: {result['content']}\n\n"
-            
-            if tavily_results_formatted:
-                summary = llm.invoke(f"""
-                Summarize the following search results into a concise, factual summary.
-                
-                CRITICAL: Include ALL specific numbers, percentages, fees, requirements, and processes.
-                Format the summary clearly with bullet points if multiple items exist.
-                
-                User Query: {query}
-                
-                Search Results:
-                {tavily_results_formatted}
-                
-                Provide a well-structured summary:
-                """).content
-                
-                overall_search_results += f"=== {query} ===\n{summary}\n\n"
-            else:
-                overall_search_results += f"=== {query} ===\nNo specific information found.\n\n"
-    
-    except Exception as e:
-        print(f"[SEARCH ERROR]: {e}")
-        overall_search_results = "Search temporarily unavailable."
-
-    state["search_results"] = overall_search_results
-    state["queries"] = []  # Clear queries after processing
-    state["action"] = "sales_agent"  # Always go to sales after search
-    
-    print(f"\n[SEARCH COMPLETE] Results:\n{overall_search_results}")
-    return state
-
-
 def emi_calculator_agent(state: State) -> State:
     """
     EMI Calculator agent - calculates EMI and updates state.
@@ -319,7 +299,7 @@ def underwriting_agent(state: State) -> State:
     Only called when user_id exists.
     """
     # Get user_id from either state or profile
-    user_id = state.get("user_id") or state["user_profile"].get("user_id")
+    user_id = state.get("user_id") or int(state["user_profile"].get("user_id"))
     
     if not user_id:
         print("[UNDERWRITING WARNING]: Called without user_id")
@@ -346,6 +326,8 @@ def underwriting_agent(state: State) -> State:
         # Add to history so sales agent can reference it
         underwriting_note = f"\n[System Note: Credit check completed - Score: {credit_score}, Pre-approved: ₹{pre_approved_amount:,}]"
         state["history"] += underwriting_note
+
+        state["user_profile"] = update_user_profile(f"Credit Score: {credit_score}, Pre approved loan limit: {pre_approved_amount}", state["user_profile"])
         
     except Exception as e:
         print(f"[UNDERWRITING ERROR]: {e}")
@@ -376,18 +358,3 @@ def route_after_sales(state: State) -> Literal["user_agent", "__end__"]:
     if state.get("count", 0) >= MAX_COUNT:
         return "__end__"
     return "user_agent"
-
-
-def route_after_search(state: State) -> Literal["sales_agent"]:
-    """Search always routes to sales"""
-    return "sales_agent"
-
-
-def route_after_underwriting(state: State) -> Literal["sales_agent"]:
-    """Underwriting always routes to sales"""
-    return "sales_agent"
-
-
-def route_after_emi(state: State) -> Literal["sales_agent"]:
-    """EMI calculator always routes to sales"""
-    return "sales_agent"
