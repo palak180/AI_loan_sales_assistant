@@ -26,6 +26,9 @@ graph_builder.add_node("underwriting_agent", underwriting_agent)
 # Start always goes to master
 graph_builder.add_edge(START, "master_agent")
 
+# User agent always goes back to master for routing
+graph_builder.add_edge("user_agent", "master_agent")
+
 # Master agent uses conditional routing
 graph_builder.add_conditional_edges(
     "master_agent",
@@ -38,9 +41,6 @@ graph_builder.add_conditional_edges(
         "__end__": END
     }
 )
-
-# User agent always goes back to master for routing
-graph_builder.add_edge("user_agent", "master_agent")
 
 # Sales agent conditional routing
 graph_builder.add_conditional_edges(

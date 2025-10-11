@@ -1,7 +1,5 @@
-from agents.prompts import PROMPTS
-from langchain.tools import tool
+from agents.prompts import USERS
 
-# @tool
 def credit_score_api(user_id: int) -> int:
     """
     Fetches the credit score (out of 900) for the given user_id.
@@ -11,9 +9,8 @@ def credit_score_api(user_id: int) -> int:
     Returns:
         int: The credit score (out of 900).
     """
-    return PROMPTS[user_id]['credit_score']
+    return USERS[user_id]['credit_score']
 
-# @tool
 def pre_approved_amount_api(user_id: int) -> int:
     """
     Fetches the pre-approved loan amount (in INR) for the given user_id.
@@ -24,4 +21,4 @@ def pre_approved_amount_api(user_id: int) -> int:
         int: The pre-approved loan amount (in INR).
     """
     
-    return PROMPTS[user_id]['pre-approved_amount']
+    return USERS[user_id]['pre-approved_amount']

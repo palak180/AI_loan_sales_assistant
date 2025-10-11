@@ -59,12 +59,11 @@ def master_agent(state: State) -> State:
 
     Routing Rules:
     1. If user asks about loan products, eligibility, interest rates, documents required, fees, processes, terms → route to 'search_agent'
-    2. If user asks to calculate EMI/monthly payment AND we have loan_amount AND (interest_rate OR loan_type) AND tenure → route to 'emi_calculator'
     3. Otherwise (greetings, general questions, clarifications, negotiations, follow-ups) → route to 'sales_agent'
 
     Respond in strict JSON format with just the action:
     {{
-        "action": "search_agent" | "emi_calculator" | "sales_agent",
+        "action": "search_agent" | "sales_agent",
         "reason": "brief explanation"
     }}
     """
@@ -79,15 +78,7 @@ def master_agent(state: State) -> State:
         try:
             data = json.loads(match.group())
             action = data.get("action", "sales_agent")
-            
-            # Validate EMI calculator routing
-            if action == "emi_calculator":
-                required_fields = ["loan_amount", "interest_rate", "tenure"]
-                missing = [f for f in required_fields if not user_profile.get(f)]
-                if missing:
-                    print(f"  → Cannot calculate EMI: missing {missing}")
-                    action = "sales_agent"
-            
+                        
             state["queries"] = data.get("queries", [])
             state["action"] = action
             print(f"  → Final routing: {action}")
@@ -187,11 +178,7 @@ def emi_calculator_agent(state: State) -> State:
     
     try:
         # Call the EMI calculation tool
-        result = calculate_emi({
-            "loan_amount": float(loan_amount),
-            "annual_interest_rate": float(interest_rate),
-            "tenure_months": int(tenure)
-        })
+        result = calculate_emi(float(loan_amount), float(interest_rate), int(tenure))
         
         emi_summary = f"""
 EMI Calculation Results:
@@ -261,17 +248,13 @@ def underwriting_agent(state: State) -> State:
 
 
 # Routing functions for conditional edges
-def route_after_master(state: State) -> Literal["user_agent", "sales_agent", "search_agent", "underwriting_agent", "emi_calculator", "__end__"]:
+def route_after_master(state: State) -> Literal["user_agent", "sales_agent", "search_agent", "underwriting_agent", "__end__"]:
     """Route based on action set by master_agent"""
     action = state.get("action", "sales_agent")
     
     if action == "end":
         return "__end__"
-    
-    # Map to node names
-    if action == "emi_calculator":
-        return "emi_calculator"
-    
+        
     return action
 
 

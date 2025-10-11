@@ -34,7 +34,8 @@ def update_user_profile(latest_message: str, current_profile: dict) -> dict:
     Message: "My user ID is 2 and I want a home loan for 35 lakhs, tenure 10 years"
     Output: {{"user_id": 2, "loan_amount": 3500000, "loan_type": "home", "loan_tenure": 120}}
 
-    Now give the result as a strict JSON object.
+    Now give the result as a strict JSON object. Return only the JSON object, no additional text or comments.
+
     """
     else:
         prompt = f"""
@@ -65,7 +66,8 @@ def update_user_profile(latest_message: str, current_profile: dict) -> dict:
     Message: "Yes sure, my user ID is 2"
     Output: {{"user_id": 2, "loan_amount": 3500000, "loan_type": "home", "loan_tenure": 120}}
 
-    Now give only the strictly JSON response.
+    Now give only the strictly JSON response. Return only the JSON object, no additional text or comments.
+
     """
 
     response = llm.invoke(prompt)
