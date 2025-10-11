@@ -9,6 +9,7 @@ from agents.agents import (
     route_after_sales
 )
 from agents.search_agent import search_agent
+from agents.feedback_agent import feedback_agent
 from state import State
 
 dotenv.load_dotenv()
@@ -22,6 +23,7 @@ graph_builder.add_node("sales_agent", sales_agent)
 graph_builder.add_node("user_agent", user_agent)
 graph_builder.add_node("search_agent", search_agent)
 graph_builder.add_node("underwriting_agent", underwriting_agent)
+graph_builder.add_node("feedback_agent", feedback_agent)
 
 # Start always goes to master
 graph_builder.add_edge(START, "master_agent")
@@ -47,16 +49,18 @@ graph_builder.add_conditional_edges(
     "sales_agent",
     route_after_sales,
     {
+        "feedback_agent": "feedback_agent",
         "user_agent": "user_agent",
         "__end__": END
     }
 )
 
-# Search agent always goes to sales
+# Always goes to sales
+graph_builder.add_edge("feedback_agent", "sales_agent")
 graph_builder.add_edge("search_agent", "sales_agent")
 
-# Underwriting agent always goes to sales
-graph_builder.add_edge("underwriting_agent", "sales_agent")
+# Underwriting agent always goes to master
+graph_builder.add_edge("underwriting_agent", "master_agent")
 
 # Compile graph
 graph = graph_builder.compile()
@@ -70,7 +74,8 @@ if __name__ == "__main__":
         'emi_calculation': '',
         'action': '',
         'user_profile': {},
-        'user_id': None
+        'user_id': None,
+        'feedback': ''
     }
 
     conversation = graph.invoke(initial_state)

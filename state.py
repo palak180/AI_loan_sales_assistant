@@ -8,5 +8,7 @@ class State(TypedDict):
     action: str                     # Next action/agent to route to (populated by all agents)
     user_id: Optional[int]          # User ID for credit checks
     user_profile: Dict[str, Any]    # User profile data extracted from conversation
+    feedback: Optional[str]
+    last_response: str
     # Example profile fields: name, phone, email, income, employment_type, 
     # loan_amount, loan_type, tenure, interest_rate, credit_score, pre_approved_amount, etc.

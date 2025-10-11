@@ -149,17 +149,27 @@ Instructions:
 
 Generate your response now:"""
 
-    response = llm.invoke(full_prompt)
-    
-    sales_response = response.content
-    print(f"\n[SALES AGENT]: {sales_response}\n")
+    if (state["feedback"]):
+        full_prompt += f"Take the following feedback into consideration: {state["feedback"]}"
 
-    # Update state
-    state["search_results"] = ""  # Clear search results after use
-    state["emi_calculation"] = ""  # Clear EMI calculation after use
-    state["history"] += "\nLoan Assistant: " + sales_response
-    state["count"] = state.get("count", 0) + 1
-    state["action"] = "user_agent"  # Always go to user after sales response
+        response = llm.invoke(full_prompt)
+        
+        sales_response = response.content
+        print(f"\n[SALES AGENT]: {sales_response}\n")
+
+        state["feedback"] = None
+        state["search_results"] = ""  # Clear search results after use
+        state["emi_calculation"] = ""  # Clear EMI calculation after use
+        state["history"] += "\nLoan Assistant: " + sales_response
+        state["count"] = state.get("count", 0) + 1
+        state["action"] = "user_agent"  # Always go to user after sales response
+    
+    else:
+        response = llm.invoke(full_prompt)
+        
+        sales_response = response.content
+        print(f"\n[SALES AGENT]: Before Feedback - {sales_response}\n")
+        state["action"] = "feedback_agent"
 
     return state
 
@@ -258,8 +268,8 @@ def route_after_master(state: State) -> Literal["user_agent", "sales_agent", "se
     return action
 
 
-def route_after_sales(state: State) -> Literal["user_agent", "__end__"]:
+def route_after_sales(state: State) -> Literal["user_agent", "feedback_agent", "__end__"]:
     """Route after sales agent - either to user or end"""
     if state.get("count", 0) >= MAX_COUNT:
         return "__end__"
-    return "user_agent"
+    return state.get("action", "user_agent")
